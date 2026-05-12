@@ -74,8 +74,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
+// API routes — mounted at both /api/forms and /forms for compatibility
 app.use('/api/forms', formLimiter, formRoutes);
+app.use('/forms', formLimiter, formRoutes);
 
 // 404 handler
 app.use((req, res) => {
