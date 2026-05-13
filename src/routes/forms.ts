@@ -1,7 +1,5 @@
 import express from 'express';
 import { z } from 'zod';
-import multer from 'multer';
-import path from 'path';
 import { zeptoMail } from '../services/zeptomail.js';
 import {
   contactFormSchema,
@@ -265,27 +263,12 @@ router.post('/partner', async (req, res) => {
 });
 
 /**
- * Volunteer Application Submission (multipart/form-data for CV upload)
+ * Volunteer Application Submission
  * POST /api/forms/volunteer
  */
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['.pdf', '.doc', '.docx'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF, DOC, and DOCX files are allowed'));
-    }
-  },
-});
-
-router.post('/volunteer', upload.single('cv'), async (req, res) => {
+router.post('/volunteer', async (req, res) => {
   try {
     const validatedData = volunteerFormSchema.parse(req.body);
-    const cvFile = req.file;
 
     const { subject, html, text } = volunteerConfirmationTemplate({ ...validatedData, name: validatedData.fullName });
 
@@ -297,16 +280,11 @@ router.post('/volunteer', upload.single('cv'), async (req, res) => {
       textBody: text,
     });
 
-    const adminData: Record<string, string> = {
+    const { subject: adminSubject, html: adminHtml, text: adminText } = adminNotificationTemplate({
       ...validatedData,
       name: validatedData.fullName,
       formType: 'Volunteer Application',
-    };
-    if (cvFile) {
-      adminData.cvAttached = `${cvFile.originalname} (${(cvFile.size / 1024).toFixed(1)} KB)`;
-    }
-
-    const { subject: adminSubject, html: adminHtml, text: adminText } = adminNotificationTemplate(adminData as any);
+    } as any);
 
     const adminEmailResult = await zeptoMail.sendEmail({
       to: ADMIN_EMAIL,
@@ -322,7 +300,6 @@ router.post('/volunteer', upload.single('cv'), async (req, res) => {
       details: {
         userEmailSent: userEmailResult.success,
         adminEmailSent: adminEmailResult.success,
-        cvUploaded: !!cvFile,
       },
     });
   } catch (error) {
@@ -331,13 +308,6 @@ router.post('/volunteer', upload.single('cv'), async (req, res) => {
         success: false,
         error: 'Validation failed',
         details: formatValidationErrors(error),
-      });
-    }
-
-    if (error instanceof multer.MulterError) {
-      return res.status(400).json({
-        success: false,
-        error: error.code === 'LIMIT_FILE_SIZE' ? 'CV file must be under 5MB' : 'File upload error',
       });
     }
 
